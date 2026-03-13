@@ -1,0 +1,216 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Punch EV PDI Pro v7</title>
+<style>
+body{font-family:Arial;margin:0;padding:16px;background:#eef2f7}
+h1{margin-bottom:4px}
+.subtitle{color:#555;margin-bottom:14px}
+.section{margin-top:22px;font-size:20px;font-weight:bold}
+.card{background:#fff;padding:14px;margin-top:10px;border-radius:12px;box-shadow:0 2px 6px rgba(0,0,0,.1)}
+button{padding:7px 12px;border:none;border-radius:8px;margin-right:6px;margin-top:8px}
+.pass{background:#22c55e;color:white}
+.fail{background:#ef4444;color:white}
+.pending{background:#d1d5db}
+.scan{background:#7c3aed;color:white}
+.export{background:#2563eb;color:white}
+.share{background:#0ea5e9;color:white}
+input,textarea{width:100%;margin-top:8px;padding:8px;border-radius:8px;border:1px solid #ddd}
+.scoreCard{position:sticky;bottom:0;background:white;padding:14px;border-radius:12px;margin-top:20px;box-shadow:0 -2px 8px rgba(0,0,0,.1)}
+.score{font-size:26px;font-weight:bold}
+.progress{height:10px;background:#e5e7eb;border-radius:6px;margin-top:8px}
+.bar{height:10px;background:#22c55e;border-radius:6px;width:0%}
+.headerCard{background:#fff;padding:14px;border-radius:12px;box-shadow:0 2px 6px rgba(0,0,0,.1);margin-bottom:12px}
+.gallery img{width:80px;height:60px;object-fit:cover;border-radius:6px;margin:4px}
+.small{font-size:12px;color:#666}
+</style>
+</head>
+
+<body>
+
+<h1>🚗 Punch EV Delivery Inspection</h1>
+<div class="subtitle">PRO PDI Tool v7 • 120 Point Inspection</div>
+
+<div class="headerCard">
+<b>Vehicle Details</b>
+<input id="vin" placeholder="VIN / Chassis Number">
+<button class="scan" onclick="scanVIN()">Scan VIN Barcode</button>
+<input id="dealer" placeholder="Dealer Name">
+<input id="deliveryDate" type="date">
+<input id="odo" placeholder="Odometer (km)">
+<input id="battery" placeholder="Battery SOC %">
+<input id="tyreDate" placeholder="Tyre Manufacturing Week/Year">
+<div class="small">Tip: tyre age should be less than 6 months</div>
+</div>
+
+<div id="app"></div>
+
+<div class="scoreCard">
+<div id="score"></div>
+<div class="progress"><div id="bar" class="bar"></div></div>
+<button class="export" onclick="exportReport()">Download Report</button>
+<button class="share" onclick="shareReport()">Share</button>
+</div>
+
+<script>
+
+const checklist={
+
+"Exterior Body":[
+"Panel gaps even","Paint uniform","No dents","Headlight clarity","Tail light working","DRL working","Fog lamps","Bonnet open close","Boot alignment","Charging port cover","Glass scratches","Windshield seal"
+],
+
+"Tyres":[
+"Tyre brand same","Tyre pressure correct","Tyre manufacturing <6 months","Wheel scratches","Wheel nut caps","Spare tyre present","Jack available","Toolkit present"
+],
+
+"Interior":[
+"Seat fabric","Seat adjust","Seat belts","Dashboard finish","Cabin smell","Floor mats","Glove box","Boot liner","Interior lights","AC cooling"
+],
+
+"Infotainment":[
+"System boot","Touch response","Reverse camera","Android Auto","Apple CarPlay","Bluetooth","USB ports","Speakers","Steering controls"
+],
+
+"EV Battery":[
+"SOC >30%","Charging cable","Portable charger","Charging port light","AC charging","Battery health report","Drive modes","Regenerative braking"
+],
+
+"Safety":[
+"Airbag light off","ABS light off","Parking sensors","Reverse camera","TPMS","Central locking","Child lock","Hazard lights","Brake lights"
+],
+
+"Documents":[
+"VIN matches invoice","Insurance","Manual","Warranty booklet","Toolkit","Spare key","FASTag","Temp registration"
+]
+
+};
+
+let results={};
+let photos={};
+
+function render(){
+const app=document.getElementById("app");
+app.innerHTML="";
+
+Object.keys(checklist).forEach(cat=>{
+
+const title=document.createElement("div");
+title.className="section";
+title.innerText=cat;
+app.appendChild(title);
+
+checklist[cat].forEach((item,index)=>{
+
+const id=cat+"_"+index;
+
+const card=document.createElement("div");
+card.className="card";
+
+card.innerHTML=`
+<div><b>${item}</b></div>
+<button class="pass" onclick="setResult('${id}','pass')">Pass</button>
+<button class="fail" onclick="setResult('${id}','fail')">Fail</button>
+<button class="pending" onclick="setResult('${id}','pending')">Pending</button>
+<textarea placeholder="Remarks" onchange="setRemark('${id}',this.value)"></textarea>
+<input type="file" accept="image/*" capture="environment" onchange="uploadPhoto(event,'${id}')">
+<div class="gallery" id="gallery_${id}"></div>
+`;
+
+app.appendChild(card);
+
+});
+
+});
+
+updateScore();
+}
+
+function setResult(id,val){
+results[id]=val;
+save();
+updateScore();
+}
+
+function setRemark(id,val){
+results[id+"_remark"]=val;
+save();
+}
+
+function uploadPhoto(e,id){
+const file=e.target.files[0];
+if(file){
+const reader=new FileReader();
+reader.onload=function(evt){
+photos[id]=evt.target.result;
+document.getElementById("gallery_"+id).innerHTML=`<img src="${evt.target.result}">`;
+save();
+};
+reader.readAsDataURL(file);
+}
+}
+
+function updateScore(){
+const total=document.querySelectorAll('.card').length;
+let pass=0;
+Object.keys(results).forEach(k=>{if(results[k]==='pass') pass++;});
+let score=Math.round((pass/total)*100)||0;
+let risk="LOW";
+if(score<70) risk="HIGH";
+else if(score<85) risk="MEDIUM";
+
+document.getElementById("score").innerHTML=`
+<div>${pass} / ${total} checks passed</div>
+<div class="score">Inspection Score: ${score}%</div>
+<div>Delivery Risk: <b>${risk}</b></div>`;
+
+document.getElementById("bar").style.width=score+"%";
+}
+
+function save(){
+localStorage.setItem("pdi_results",JSON.stringify(results));
+localStorage.setItem("pdi_photos",JSON.stringify(photos));
+}
+
+function load(){
+const r=localStorage.getItem("pdi_results");
+const p=localStorage.getItem("pdi_photos");
+if(r) results=JSON.parse(r);
+if(p) photos=JSON.parse(p);
+}
+
+function scanVIN(){
+alert("Use phone camera to scan VIN barcode on windshield.");
+}
+
+function exportReport(){
+let report="Punch EV PDI Inspection Report\n\n";
+report+="VIN: "+document.getElementById("vin").value+"\n";
+report+="Dealer: "+document.getElementById("dealer").value+"\n";
+report+="Date: "+document.getElementById("deliveryDate").value+"\n";
+report+="Odometer: "+document.getElementById("odo").value+" km\n";
+report+="Battery SOC: "+document.getElementById("battery").value+"%\n";
+report+="Tyre Date: "+document.getElementById("tyreDate").value+"\n\n";
+Object.keys(results).forEach(k=>{report+=k+" : "+results[k]+"\n";});
+
+const blob=new Blob([report],{type:'text/plain'});
+const url=URL.createObjectURL(blob);
+const a=document.createElement("a");
+a.href=url;
+a.download="PunchEV_PDI_Report.txt";
+a.click();
+}
+
+function shareReport(){
+const text="Punch EV PDI inspection completed";
+if(navigator.share){navigator.share({title:"Punch EV PDI",text:text});}
+}
+
+window.onload=function(){load();render();}
+
+</script>
+
+</body>
+</html>
